@@ -1,0 +1,115 @@
+<!doctype html>
+  <html>
+    <head>
+      <link rel="stylesheet" href="xterm.css" />
+      <script src="xterm.js"></script>
+      <script src="xterm-addon-fit.js"></script>
+      <style>
+        .xterm .xterm-viewport {
+          /* On OS X this is required in order for the scroll bar to appear fully opaque */
+          background-color: transparent;
+          overflow-y: scroll;
+          cursor: default;
+          position: absolute;
+          right: 0;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          scrollbar-color: var(--highlight) var(--dark);
+          scrollbar-width: thin;
+        }
+
+        .xterm-viewport::-webkit-scrollbar {
+          background-color: var(--dark);
+          width: 5px;
+        }
+
+        .xterm-viewport::-webkit-scrollbar-thumb {
+          background: var(--highlight);
+        }
+      </style>
+    </head>
+    <body>
+      <div id="terminal"></div>
+      <button id="connect">connect</button>
+      <script>
+        var E = function(id) { return document.getElementById(id); };
+        var connect = E('connect');
+        var connectButtonEnabled = true;
+        var ws;
+        var lastSendData;
+        var startTime = window.performance.now();
+
+
+        const term = new Terminal({
+          cursorBlink: true,
+          macOptionIsMeta: true,
+          scrollback: true,
+          convertEol: true,
+        });
+        const fit = new FitAddon.FitAddon();
+        term.loadAddon(fit);
+        term.open(document.getElementById('terminal'));
+        //term.resize(120, 30);
+        fit.fit();
+        //term.resize(term.cols, term.rows);
+        console.log(`size: c:${returnSizeStr(term.cols, 5)} r:${returnSizeStr(term.rows, 5)}`);
+        
+        term.writeln('START');
+        
+        term.onData((data) => {
+          console.log("out:  ", data);
+          startTime = window.performance.now();
+          ws.send(data);
+          lastSendData = data;
+        });
+        
+        connect.onclick = function() {
+          if(connectButtonEnabled){
+            start();
+          }
+          term.focus();
+        };
+        document.addEventListener("DOMContentLoaded", function(){
+          start();
+        });
+
+        function returnSizeStr(num, strSize){
+          let returnStr = num.toString();
+          for(let i = returnStr.length; i <= strSize; i++){
+            returnStr += " ";
+          }
+          return returnStr;
+        }
+        function start(){
+          ws = new WebSocket("ws://" + location.host + "/websocket");
+          if (!ws) return;
+          ws.onopen = function() { 
+            connectButtonEnabled = false;
+            term.writeln('CONNECTION OPENED'); 
+            let strSize = `size: c:${returnSizeStr(term.cols, 5)} r:${returnSizeStr(term.rows, 5)}`;
+            console.log("sending", strSize, "len:", strSize.length);
+            ws.send(strSize);
+            ws.send("\n");
+          }
+          ws.onmessage = function(ev) { 
+            term.write(ev.data); 
+            if(lastSendData == ev.data){
+              console.log("data:", ev.data, "   time: ", startTime - window.performance.now(), " ms"); 
+            }else{
+              console.log("data:", ev.data); 
+            }
+          }
+          ws.onerror = function(ev) { 
+            term.writeln('ERROR: ' + ev); 
+            console.log('ERROR:', ev); 
+          }
+          ws.onclose = function() { 
+            connectButtonEnabled = true;
+            term.writeln('\nCONNECTION CLOSED');
+          }
+        }
+    
+      </script>
+    </body>
+  </html>
